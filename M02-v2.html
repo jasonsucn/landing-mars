@@ -1,0 +1,1923 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登陆火星 · Landing on Mars</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    :root {
+      --surface-0: #05070C;
+      --surface-1: #0A0D12;
+      --surface-2: #0F131C;
+      --surface-3: #161D2B;
+      --accent: #E9A568;
+      --text: rgba(255, 255, 255, 0.92);
+      --text-dim: rgba(255, 255, 255, 0.48);
+      --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --font-mono: "SF Mono", "Consolas", "Monaco", monospace;
+    }
+    
+    body {
+      background: var(--surface-0);
+      color: var(--text);
+      font-family: var(--font-display);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    #viewport-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+    
+    #canvas-target {
+      display: block;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    
+    /* Intro Overlay */
+    #intro-overlay {
+      position: fixed;
+      inset: 0;
+      background: var(--surface-0);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(1.5rem, 3vw, 2.5rem);
+      z-index: 100;
+      transition: opacity 0.8s ease-out;
+      cursor: pointer;
+    }
+    
+    #intro-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    .intro-title {
+      font-size: clamp(2.5rem, 8vw, 5rem);
+      font-weight: 300;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+    
+    .intro-subtitle {
+      font-size: clamp(0.75rem, 1.5vw, 1rem);
+      letter-spacing: 0.15em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+    
+    .intro-cta {
+      margin-top: clamp(2rem, 5vw, 4rem);
+      font-size: clamp(0.7rem, 1.2vw, 0.85rem);
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--accent);
+      opacity: 0.8;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
+    
+    /* Control Bar */
+    #control-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: clamp(1rem, 2vw, 1.5rem);
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      z-index: 50;
+      transition: opacity 0.4s ease;
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    #control-bar.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .controls-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      align-items: center;
+      gap: clamp(0.75rem, 2vw, 1.5rem);
+      font-family: var(--font-mono);
+      font-size: clamp(0.7rem, 1vw, 0.85rem);
+    }
+    
+    .control-btn {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
+      color: var(--text);
+      padding: 0.5rem 0.75rem;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: var(--font-mono);
+      font-size: inherit;
+    }
+    
+    .control-btn:hover {
+      border-color: rgba(255,255,255,0.6);
+      background: rgba(255,255,255,0.05);
+    }
+    
+    #progress-container {
+      position: relative;
+      height: 3px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    
+    #progress-bar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+      width: 0%;
+      transition: width 0.1s linear;
+      pointer-events: none;
+    }
+    
+    .act-tick {
+      position: absolute;
+      top: -2px;
+      width: 1px;
+      height: 7px;
+      background: rgba(255,255,255,0.5);
+      pointer-events: none;
+    }
+    
+    #timecode {
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    
+    /* HUD Overlay */
+    #hud-overlay {
+      position: absolute;
+      z-index: 40;
+      font-family: var(--font-mono);
+      font-size: clamp(0.7rem, 1vw, 0.8rem);
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 0.05em;
+      line-height: 1.6;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    #hud-overlay.visible {
+      opacity: 1;
+    }
+    
+    /* Title Overlay */
+    #title-overlay {
+      position: absolute;
+      z-index: 41;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    #title-overlay.visible {
+      opacity: 1;
+    }
+    
+    .title-main {
+      font-family: var(--font-display);
+      font-size: clamp(1.2rem, 2.5vw, 2rem);
+      font-weight: 300;
+      color: rgba(255,255,255,0.95);
+      letter-spacing: 0.05em;
+      margin-bottom: 0.3rem;
+    }
+    
+    .title-sub {
+      font-family: var(--font-mono);
+      font-size: clamp(0.65rem, 1.2vw, 0.85rem);
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+    
+    /* Blackout Overlay */
+    #blackout-overlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 45;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.1s linear;
+    }
+    
+    #blackout-overlay.active {
+      opacity: 1;
+    }
+    
+    .blackout-text {
+      font-family: var(--font-mono);
+      font-size: clamp(1rem, 2vw, 1.5rem);
+      letter-spacing: 0.35em;
+      color: rgba(216, 207, 192, 0.65);
+    }
+    
+    /* End Replay */
+    #replay-overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 60;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+    
+    #replay-overlay.visible {
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    #replay-btn {
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      padding: 1rem 2.5rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: clamp(0.85rem, 1.2vw, 1rem);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: all 0.3s;
+    }
+    
+    #replay-btn:hover {
+      background: var(--accent);
+      color: var(--surface-0);
+    }
+  </style>
+</head>
+<body>
+
+<div id="viewport-container">
+  <canvas id="canvas-target"></canvas>
+  <div id="hud-overlay">
+    <div id="hud-vel">VEL: 0.0 M/S</div>
+    <div id="hud-alt">ALT: 0.0 KM</div>
+  </div>
+  <div id="title-overlay">
+    <div class="title-main">火星 · 距离 225 公里</div>
+    <div class="title-sub">MARS — 225 KM</div>
+  </div>
+</div>
+
+<div id="intro-overlay">
+  <div class="intro-title">登陆火星</div>
+  <div class="intro-subtitle">A Mars Landing Film</div>
+  <div class="intro-cta">Click to Begin</div>
+</div>
+
+<div id="control-bar">
+  <div class="controls-inner">
+    <button class="control-btn" id="play-pause-btn">▶</button>
+    <div id="progress-container">
+      <div id="progress-bar"></div>
+    </div>
+    <div id="timecode">00:00 / 01:00</div>
+    <button class="control-btn" id="mute-btn">SND OFF</button>
+  </div>
+</div>
+
+<div id="blackout-overlay">
+  <div class="blackout-text">SIGNAL LOST</div>
+</div>
+
+<div id="replay-overlay">
+  <button id="replay-btn">Replay</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+
+/* ============== SECTION: CONFIG ============== */
+
+const CONFIG = {
+  DURATION: 60,
+  ACT_BOUNDARIES: [16, 46],
+  ASPECT_RATIO: 2.39,
+  MUTED_BY_DEFAULT: true,
+  
+  BLOOM: {
+    STRENGTH: 1.2,
+    RADIUS: 0.4,
+    THRESHOLD: 0.3
+  },
+  
+  POST: {
+    VIGNETTE_STRENGTH: 0.6,
+    GRAIN_STRENGTH: 0.08
+  },
+  
+  CAMERA: {
+    INITIAL_FOV: 50,
+    NEAR: 0.1,
+    FAR: 1000
+  },
+  
+  AUDIO: {
+    TEST_BEEP_FREQ: 440,
+    TEST_BEEP_DURATION: 0.15,
+    DRONE_FADE_IN_END: 3.0,
+    DRONE_FADE_OUT_START: 16.0,
+    DRONE_FADE_OUT_END: 17.5
+  },
+  
+  UI: {
+    CONTROL_FADE_DELAY: 3000,
+    BLACKOUT_START: 21.0,
+    BLACKOUT_END: 22.0,
+    BLACKOUT_FADE_IN_START: 21.2,
+    BLACKOUT_FADE_IN_END: 21.6,
+    BLACKOUT_FADE_OUT_START: 21.8,
+    BLACKOUT_FADE_OUT_END: 22.0
+  },
+  
+  ACT1: {
+    SHOT1_END: 4.5,
+    SHOT2_END: 9.0,
+    SHOT3_END: 16.0,
+    
+    STARFIELD: {
+      COUNT: 2800,
+      SPREAD: 200,
+      SIZE_MIN: 0.5,
+      SIZE_MAX: 2.5,
+      TWINKLE_SPEED: 0.3,
+      SEED: 19387
+    },
+    
+    MARS: {
+      RADIUS: 10,
+      INITIAL_DISTANCE: 500,
+      COLOR_BASE: 0xC4704F,
+      COLOR_DARK: 0x6B3828,
+      COLOR_POLAR: 0xE8D5C8,
+      ATMOSPHERE_COLOR: 0x88CCFF,
+      ATMOSPHERE_INTENSITY: 1.2
+    },
+    
+    SPACECRAFT: {
+      HULL_RADIUS: 0.8,
+      HULL_HEIGHT: 1.2,
+      SERVICE_SIZE: 0.6,
+      ANTENNA_SIZE: 0.4,
+      ENGINE_GLOW_COLOR: 0xFF6622,
+      ENGINE_GLOW_INTENSITY: 0.3
+    },
+    
+    TITLES: [
+      {
+        start: 0.8,
+        end: 4.2,
+        main: '火星 · 距离 225 公里',
+        sub: 'MARS — 225 KM'
+      }
+    ],
+    
+    HUD: {
+      SHOT3_START: 9.0,
+      VEL_START: 1680,
+      VEL_END: 1620,
+      ALT_START: 225,
+      ALT_END: 195
+    }
+  },
+  
+  ACT2: {
+    SHOT4_START: 16.0,
+    SHOT4_END: 21.0,
+    SHOT5_START: 22.0,
+    SHOT5_END: 28.0,
+    PLASMA: {
+      COUNT: 900,
+      RAMP_END: 19.0,
+      FLICKER_END: 20.8,
+      SEED: 37,
+      CORE_COLOR: 0xFFF4D6,
+      MID_COLOR: 0xFFB566,
+      OUTER_COLOR: 0xFF5A26
+    },
+    SHAKE: {
+      MAX_TIME: 20.6,
+      POSITION_AMPLITUDE: 0.06,
+      ROTATION_AMPLITUDE: 0.8,
+      FREQ_A: 1.7,
+      FREQ_B: 3.1,
+      FREQ_C: 5.3,
+      PHASE_A: 0.4,
+      PHASE_B: 1.7,
+      PHASE_C: 3.0
+    },
+    CHUTE: {
+      EJECTION_END: 22.2,
+      INFLATION_END: 23.3,
+      RADIUS: 2.2,
+      COLOR: 0xD9C6A8,
+      DARK_COLOR: 0x8E765F,
+      SWING_START: 22.8,
+      SWING_DECAY: 0.55,
+      SWING_FREQUENCY: 1.4,
+      SWING_DEGREES: 6
+    },
+    HAZE: {
+      LOW_COLOR: 0x2A1B14,
+      MID_COLOR: 0xC97B4E,
+      HIGH_COLOR: 0xE8A97E,
+      BAND_OPACITY: 0.12
+    }
+  }
+};
+
+let scene, camera, renderer, composer, postPass;
+let canvas, viewportContainer;
+let renderWidth, renderHeight;
+let pictureRect = { left: 0, top: 0, width: 0, height: 0 };
+
+function initRenderPipeline() {
+  canvas = document.getElementById('canvas-target');
+  viewportContainer = document.getElementById('viewport-container');
+  
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x000000);
+  scene.fog = null;
+  
+  camera = new THREE.PerspectiveCamera(
+    CONFIG.CAMERA.INITIAL_FOV,
+    CONFIG.ASPECT_RATIO,
+    CONFIG.CAMERA.NEAR,
+    CONFIG.CAMERA.FAR
+  );
+  
+  renderer = new THREE.WebGLRenderer({ 
+    canvas: canvas,
+    antialias: true,
+    powerPreference: 'high-performance'
+  });
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  
+  const renderPass = new RenderPass(scene, camera);
+  
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(renderWidth, renderHeight),
+    CONFIG.BLOOM.STRENGTH,
+    CONFIG.BLOOM.RADIUS,
+    CONFIG.BLOOM.THRESHOLD
+  );
+  
+  postPass = new ShaderPass({
+    uniforms: {
+      tDiffuse: { value: null },
+      uTime: { value: 0 },
+      uVignetteStrength: { value: CONFIG.POST.VIGNETTE_STRENGTH },
+      uGrainStrength: { value: CONFIG.POST.GRAIN_STRENGTH }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float uTime;
+      uniform float uVignetteStrength;
+      uniform float uGrainStrength;
+      varying vec2 vUv;
+      
+      float random(vec2 co) {
+        return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+      
+      void main() {
+        vec4 color = texture2D(tDiffuse, vUv);
+        
+        vec2 center = vUv - 0.5;
+        float dist = length(center);
+        float vignette = 1.0 - smoothstep(0.3, 1.2, dist * uVignetteStrength * 2.0);
+        color.rgb *= vignette;
+        
+        float grain = random(vUv * uTime) * 2.0 - 1.0;
+        color.rgb += grain * uGrainStrength;
+        
+        gl_FragColor = color;
+      }
+    `
+  });
+  
+  composer = new EffectComposer(renderer);
+  composer.addPass(renderPass);
+  composer.addPass(bloomPass);
+  composer.addPass(postPass);
+  
+  updateViewportSize();
+  window.addEventListener('resize', updateViewportSize);
+}
+
+function updateViewportSize() {
+  const containerWidth = viewportContainer.clientWidth;
+  const containerHeight = viewportContainer.clientHeight;
+  const containerAspect = containerWidth / containerHeight;
+  
+  if (containerAspect > CONFIG.ASPECT_RATIO) {
+    renderHeight = containerHeight;
+    renderWidth = renderHeight * CONFIG.ASPECT_RATIO;
+  } else {
+    renderWidth = containerWidth;
+    renderHeight = renderWidth / CONFIG.ASPECT_RATIO;
+  }
+  
+  renderer.setSize(renderWidth, renderHeight);
+  composer.setSize(renderWidth, renderHeight);
+  
+  if (camera) {
+    camera.aspect = CONFIG.ASPECT_RATIO;
+    camera.updateProjectionMatrix();
+  }
+  
+  const canvasRect = canvas.getBoundingClientRect();
+  pictureRect = {
+    left: canvasRect.left,
+    top: canvasRect.top,
+    width: canvasRect.width,
+    height: canvasRect.height
+  };
+  
+  updateOverlayPositions();
+}
+
+function updateOverlayPositions() {
+  const hudOverlay = document.getElementById('hud-overlay');
+  const titleOverlay = document.getElementById('title-overlay');
+  
+  const padding = 24;
+  
+  hudOverlay.style.left = `${pictureRect.left + padding}px`;
+  hudOverlay.style.bottom = `${window.innerHeight - pictureRect.top - pictureRect.height + padding}px`;
+  
+  titleOverlay.style.left = `${pictureRect.left + padding}px`;
+  titleOverlay.style.bottom = `${window.innerHeight - pictureRect.top - pictureRect.height + padding * 3}px`;
+}
+
+function getPostUniforms() {
+  return postPass.uniforms;
+}
+
+/* ============== SECTION: Timeline Engine ============== */
+
+const Easing = {
+  linear: t => t,
+  easeInOutCubic: t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  easeOutQuart: t => 1 - Math.pow(1 - t, 4),
+  easeInQuad: t => t * t,
+  easeOutQuad: t => 1 - (1 - t) * (1 - t)
+};
+
+function interpolate(a, b, t) {
+  if (Array.isArray(a)) {
+    return a.map((v, i) => v + (b[i] - v) * t);
+  }
+  return a + (b - a) * t;
+}
+
+/* ============== SECTION: Camera System ============== */
+
+const CAMERA_MOVES = [
+  {
+    start: 0,
+    end: CONFIG.ACT1.SHOT1_END,
+    from: { pos: [0, 0, 50], look: [0, 1, -500], fov: 45 },
+    to: { pos: [0, 0, 45], look: [0, 1, -500], fov: 45 },
+    ease: 'linear'
+  },
+  {
+    start: CONFIG.ACT1.SHOT1_END,
+    end: CONFIG.ACT1.SHOT2_END,
+    from: { pos: [3, 2, 8], look: [0, 0, 0], fov: 55 },
+    to: { pos: [2, 1.5, 6], look: [0, 0, 0], fov: 55 },
+    ease: 'easeOutQuad'
+  },
+  {
+    start: CONFIG.ACT1.SHOT2_END,
+    end: CONFIG.ACT1.SHOT3_END,
+    from: { pos: [0, 0, 5], look: [0, 0, -100], fov: 55 },
+    to: { pos: [0, -0.5, 4], look: [0, 0, -100], fov: 55 },
+    ease: 'easeInQuad'
+  },
+  {
+    start: CONFIG.ACT1.SHOT3_END,
+    end: CONFIG.ACT2.SHOT4_END,
+    from: { pos: [0, 0, 10], look: [0, 0, 0], fov: 50 },
+    to: { pos: [0, 1.5, 8], look: [0, -1, -8], fov: 52 },
+    ease: 'easeOutQuad'
+  },
+  {
+    start: CONFIG.ACT2.SHOT4_END,
+    end: CONFIG.ACT2.SHOT5_START,
+    from: { pos: [0, 1.5, 8], look: [0, -1, -8], fov: 52 },
+    to: { pos: [0, 0, 8], look: [0, 0, -8], fov: 50 },
+    ease: 'linear'
+  },
+  {
+    start: CONFIG.ACT2.SHOT5_START,
+    end: CONFIG.ACT2.SHOT5_END,
+    from: { pos: [0, 0, 8], look: [0, 0, -8], fov: 50 },
+    to: { pos: [0, 3, 18], look: [0, 0, -8], fov: 58 },
+    ease: 'easeOutQuart'
+  },
+  {
+    start: CONFIG.ACT2.SHOT5_END,
+    end: 60,
+    from: { pos: [0, 3, 18], look: [0, 0, -8], fov: 58 },
+    to: { pos: [0, 3, 18], look: [0, 0, -8], fov: 58 },
+    ease: 'linear'
+  }
+];
+
+function cameraStateAt(t) {
+  for (let move of CAMERA_MOVES) {
+    if (t >= move.start && t < move.end) {
+      const localT = (t - move.start) / (move.end - move.start);
+      const easedT = Easing[move.ease](localT);
+      return {
+        pos: interpolate(move.from.pos, move.to.pos, easedT),
+        look: interpolate(move.from.look, move.to.look, easedT),
+        fov: interpolate(move.from.fov, move.to.fov, easedT)
+      };
+    }
+  }
+  
+  if (t < CAMERA_MOVES[0].start) {
+    return {
+      pos: CAMERA_MOVES[0].from.pos,
+      look: CAMERA_MOVES[0].from.look,
+      fov: CAMERA_MOVES[0].from.fov
+    };
+  }
+  
+  const lastMove = CAMERA_MOVES[CAMERA_MOVES.length - 1];
+  return {
+    pos: lastMove.to.pos,
+    look: lastMove.to.look,
+    fov: lastMove.to.fov
+  };
+}
+
+/* ============== SECTION: Audio Engine ============== */
+
+const AudioEngine = {
+  ctx: null,
+  master: null,
+  muted: CONFIG.MUTED_BY_DEFAULT,
+  cues: [],
+  lastT: 0,
+  droneOsc1: null,
+  droneOsc2: null,
+  droneGain: null,
+  droneFilter: null,
+  droneActive: false,
+  
+  init() {
+    this.ctx = new AudioContext();
+    this.master = this.ctx.createGain();
+    this.master.connect(this.ctx.destination);
+    this.master.gain.value = this.muted ? 0 : 1;
+    
+    this.cues = [
+      { t: CONFIG.ACT2.SHOT4_END, type: 'static', fired: false },
+      { t: CONFIG.ACT2.SHOT5_START, type: 'mortar', fired: false },
+      { t: CONFIG.ACT2.SHOT5_START + 0.4, type: 'wind', fired: false }
+    ];
+    this.initDrone();
+  },
+  
+  initDrone() {
+    this.droneOsc1 = this.ctx.createOscillator();
+    this.droneOsc2 = this.ctx.createOscillator();
+    this.droneGain = this.ctx.createGain();
+    this.droneFilter = this.ctx.createBiquadFilter();
+    
+    this.droneOsc1.type = 'sine';
+    this.droneOsc1.frequency.value = 55;
+    this.droneOsc2.type = 'sine';
+    this.droneOsc2.frequency.value = 55.5;
+    
+    this.droneFilter.type = 'lowpass';
+    this.droneFilter.frequency.value = 400;
+    this.droneFilter.Q.value = 1;
+    
+    this.droneGain.gain.value = 0;
+    
+    this.droneOsc1.connect(this.droneFilter);
+    this.droneOsc2.connect(this.droneFilter);
+    this.droneFilter.connect(this.droneGain);
+    this.droneGain.connect(this.master);
+    
+    this.droneOsc1.start();
+    this.droneOsc2.start();
+    this.droneActive = true;
+  },
+  
+  setMuted(muted) {
+    this.muted = muted;
+    if (this.master) {
+      this.master.gain.value = muted ? 0 : 1;
+    }
+  },
+  
+  tick(prevT, t) {
+    for (let cue of this.cues) {
+      if (!cue.fired && prevT < cue.t && t >= cue.t) {
+        this.fireCue(cue);
+        cue.fired = true;
+      }
+    }
+    this.updateDrone(t);
+    this.lastT = t;
+  },
+  
+  updateDrone(t) {
+    if (!this.droneActive || !this.droneGain) return;
+    
+    let targetGain = 0;
+    
+    if (t < CONFIG.AUDIO.DRONE_FADE_IN_END) {
+      targetGain = Math.min(1, t / CONFIG.AUDIO.DRONE_FADE_IN_END) * 0.15;
+    } else if (t < CONFIG.AUDIO.DRONE_FADE_OUT_START) {
+      targetGain = 0.15;
+    } else if (t < CONFIG.AUDIO.DRONE_FADE_OUT_END) {
+      const fadeT = (t - CONFIG.AUDIO.DRONE_FADE_OUT_START) / 
+                    (CONFIG.AUDIO.DRONE_FADE_OUT_END - CONFIG.AUDIO.DRONE_FADE_OUT_START);
+      targetGain = 0.15 * (1 - fadeT);
+    } else {
+      targetGain = 0;
+    }
+    
+    this.droneGain.gain.setValueAtTime(targetGain, this.ctx.currentTime);
+  },
+  
+  fireCue(cue) {
+    if (!this.ctx || this.muted) return;
+  },
+  
+  resetCues() {
+    for (let cue of this.cues) {
+      cue.fired = false;
+    }
+  }
+};
+
+/* ============== SECTION: UI Controls ============== */
+
+const UI = {
+  introOverlay: null,
+  controlBar: null,
+  playPauseBtn: null,
+  muteBtn: null,
+  progressContainer: null,
+  progressBar: null,
+  timecode: null,
+  hudOverlay: null,
+  hudVel: null,
+  hudAlt: null,
+  titleOverlay: null,
+  titleMain: null,
+  titleSub: null,
+  blackoutOverlay: null,
+  replayOverlay: null,
+  replayBtn: null,
+  
+  controlFadeTimer: null,
+  isPlaying: false,
+  isDragging: false,
+  mouseOverBar: false,
+  
+  init() {
+    this.introOverlay = document.getElementById('intro-overlay');
+    this.controlBar = document.getElementById('control-bar');
+    this.playPauseBtn = document.getElementById('play-pause-btn');
+    this.muteBtn = document.getElementById('mute-btn');
+    this.progressContainer = document.getElementById('progress-container');
+    this.progressBar = document.getElementById('progress-bar');
+    this.timecode = document.getElementById('timecode');
+    this.hudOverlay = document.getElementById('hud-overlay');
+    this.hudVel = document.getElementById('hud-vel');
+    this.hudAlt = document.getElementById('hud-alt');
+    this.titleOverlay = document.getElementById('title-overlay');
+    this.titleMain = this.titleOverlay.querySelector('.title-main');
+    this.titleSub = this.titleOverlay.querySelector('.title-sub');
+    this.blackoutOverlay = document.getElementById('blackout-overlay');
+    this.replayOverlay = document.getElementById('replay-overlay');
+    this.replayBtn = document.getElementById('replay-btn');
+    
+    this.introOverlay.addEventListener('click', () => this.onIntroClick());
+    this.playPauseBtn.addEventListener('click', () => this.togglePlayPause());
+    this.muteBtn.addEventListener('click', () => this.toggleMute());
+    this.replayBtn.addEventListener('click', () => this.onReplay());
+    
+    this.controlBar.addEventListener('mouseenter', () => {
+      this.mouseOverBar = true;
+      this.showControls();
+    });
+    this.controlBar.addEventListener('mouseleave', () => {
+      this.mouseOverBar = false;
+    });
+    
+    this.progressContainer.addEventListener('mousedown', (e) => this.onProgressMouseDown(e));
+    this.progressContainer.addEventListener('click', (e) => this.onProgressClick(e));
+    
+    document.addEventListener('mousemove', (e) => {
+      this.showControls();
+      if (this.isDragging) {
+        this.onProgressDrag(e);
+      }
+    });
+    
+    document.addEventListener('mouseup', () => {
+      this.isDragging = false;
+    });
+    
+    this.createActTicks();
+    this.updateMuteButton();
+  },
+  
+  onIntroClick() {
+    AudioEngine.init();
+    this.introOverlay.classList.add('hidden');
+    setTimeout(() => {
+      this.isPlaying = true;
+      PlaybackEngine.play();
+      this.updatePlayButton();
+    }, 100);
+  },
+  
+  togglePlayPause() {
+    if (this.isPlaying) {
+      this.isPlaying = false;
+      PlaybackEngine.pause();
+    } else {
+      this.isPlaying = true;
+      PlaybackEngine.play();
+    }
+    this.updatePlayButton();
+  },
+  
+  toggleMute() {
+    AudioEngine.setMuted(!AudioEngine.muted);
+    this.updateMuteButton();
+  },
+  
+  updatePlayButton() {
+    this.playPauseBtn.textContent = this.isPlaying ? '❚❚' : '▶';
+  },
+  
+  updateMuteButton() {
+    this.muteBtn.textContent = AudioEngine.muted ? 'SND OFF' : 'SND ON';
+  },
+  
+  showControls() {
+    this.controlBar.classList.add('visible');
+    clearTimeout(this.controlFadeTimer);
+    
+    if (this.isPlaying && !this.mouseOverBar) {
+      this.controlFadeTimer = setTimeout(() => {
+        this.controlBar.classList.remove('visible');
+      }, CONFIG.UI.CONTROL_FADE_DELAY);
+    }
+  },
+  
+  onProgressClick(e) {
+    const rect = this.progressContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const fraction = Math.max(0, Math.min(1, x / rect.width));
+    PlaybackEngine.seek(fraction * CONFIG.DURATION);
+  },
+  
+  onProgressMouseDown(e) {
+    this.isDragging = true;
+    this.onProgressClick(e);
+  },
+  
+  onProgressDrag(e) {
+    if (!this.isDragging) return;
+    const rect = this.progressContainer.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const fraction = Math.max(0, Math.min(1, x / rect.width));
+    PlaybackEngine.seek(fraction * CONFIG.DURATION);
+  },
+  
+  updateProgress(t) {
+    const fraction = t / CONFIG.DURATION;
+    this.progressBar.style.width = `${fraction * 100}%`;
+    
+    const currentMin = Math.floor(t / 60);
+    const currentSec = Math.floor(t % 60);
+    const totalMin = Math.floor(CONFIG.DURATION / 60);
+    const totalSec = Math.floor(CONFIG.DURATION % 60);
+    
+    this.timecode.textContent = 
+      `${String(currentMin).padStart(2, '0')}:${String(currentSec).padStart(2, '0')} / ` +
+      `${String(totalMin).padStart(2, '0')}:${String(totalSec).padStart(2, '0')}`;
+  },
+  
+  updateHUD(t) {
+    if (t >= CONFIG.ACT1.HUD.SHOT3_START && t < CONFIG.ACT1.SHOT3_END) {
+      const shotT = (t - CONFIG.ACT1.HUD.SHOT3_START) / (CONFIG.ACT1.SHOT3_END - CONFIG.ACT1.HUD.SHOT3_START);
+      const vel = interpolate(CONFIG.ACT1.HUD.VEL_START, CONFIG.ACT1.HUD.VEL_END, shotT);
+      const alt = interpolate(CONFIG.ACT1.HUD.ALT_START, CONFIG.ACT1.HUD.ALT_END, shotT);
+      this.hudVel.textContent = `VEL: ${vel.toFixed(1)} M/S`;
+      this.hudAlt.textContent = `ALT: ${alt.toFixed(1)} KM`;
+      this.hudOverlay.style.opacity = '1';
+      this.hudOverlay.classList.add('visible');
+    } else if (t >= CONFIG.ACT2.SHOT4_START && t < CONFIG.ACT2.SHOT4_END) {
+      const shotT = (t - CONFIG.ACT2.SHOT4_START) / (CONFIG.ACT2.SHOT4_END - CONFIG.ACT2.SHOT4_START);
+      const vel = interpolate(CONFIG.ACT1.HUD.VEL_END, CONFIG.ACT1.HUD.VEL_END - 90, shotT);
+      const alt = interpolate(CONFIG.ACT1.HUD.ALT_END, CONFIG.ACT1.HUD.ALT_END - 35, shotT);
+      const jitter = 1 + 0.03 * Math.sin(Math.floor(t * 8) * 2.7);
+      this.hudVel.textContent = `VEL: ${(vel * jitter).toFixed(1)} M/S`;
+      this.hudAlt.textContent = `ALT: ${(alt * jitter).toFixed(1)} KM`;
+      const flicker = 0.72 + 0.28 * (0.5 + 0.5 * Math.sin(Math.floor(t * 2.2) * 5.1));
+      this.hudOverlay.style.opacity = String(flicker);
+      this.hudOverlay.classList.add('visible');
+    } else if (t >= CONFIG.ACT2.SHOT5_START + 0.4 && t < CONFIG.ACT2.SHOT5_END) {
+      const chuteStart = CONFIG.ACT2.CHUTE.EJECT_START;
+      const chuteInflated = CONFIG.ACT2.CHUTE.INFLATE_END;
+      let vel, alt;
+      
+      if (t < chuteInflated) {
+        const shotT = (t - CONFIG.ACT1.HUD.SHOT3_START) / (chuteInflated - CONFIG.ACT1.HUD.SHOT3_START);
+        vel = interpolate(CONFIG.ACT1.HUD.VEL_START, CONFIG.ACT1.HUD.VEL_END - 90, shotT);
+        alt = interpolate(CONFIG.ACT1.HUD.ALT_START, CONFIG.ACT1.HUD.ALT_END - 35, shotT);
+      } else {
+        const postT = (t - chuteInflated) / (CONFIG.ACT2.SHOT5_END - chuteInflated);
+        vel = interpolate(CONFIG.ACT1.HUD.VEL_END - 90, CONFIG.ACT1.HUD.VEL_END - 130, postT);
+        alt = interpolate(CONFIG.ACT1.HUD.ALT_END - 35, CONFIG.ACT1.HUD.ALT_END - 50, postT);
+      }
+      
+      this.hudVel.textContent = `VEL: ${vel.toFixed(1)} M/S`;
+      this.hudAlt.textContent = `ALT: ${alt.toFixed(1)} KM`;
+      this.hudOverlay.style.opacity = '1';
+      this.hudOverlay.classList.add('visible');
+    } else {
+      this.hudOverlay.style.opacity = '0';
+      this.hudOverlay.classList.remove('visible');
+    }
+  },
+  
+  updateTitles(t) {
+    let activeTitle = null;
+    for (let title of CONFIG.ACT1.TITLES) {
+      if (t >= title.start && t < title.end) {
+        activeTitle = title;
+        break;
+      }
+    }
+    
+    if (activeTitle) {
+      this.titleMain.textContent = activeTitle.main;
+      this.titleSub.textContent = activeTitle.sub;
+      this.titleOverlay.classList.add('visible');
+    } else {
+      this.titleOverlay.classList.remove('visible');
+    }
+  },
+  
+  updateBlackout(t) {
+    const inBlackout = t >= CONFIG.UI.BLACKOUT_START && t < CONFIG.UI.BLACKOUT_END;
+    if (inBlackout) {
+      this.blackoutOverlay.classList.add('active');
+    } else {
+      this.blackoutOverlay.classList.remove('active');
+    }
+  },
+  
+  showReplay() {
+    this.replayOverlay.classList.add('visible');
+  },
+  
+  hideReplay() {
+    this.replayOverlay.classList.remove('visible');
+  },
+  
+  onReplay() {
+    this.hideReplay();
+    PlaybackEngine.seek(0);
+    this.isPlaying = true;
+    PlaybackEngine.play();
+    this.updatePlayButton();
+  },
+  
+  createActTicks() {
+    CONFIG.ACT_BOUNDARIES.forEach(t => {
+      const tick = document.createElement('div');
+      tick.className = 'act-tick';
+      tick.style.left = `${(t / CONFIG.DURATION) * 100}%`;
+      this.progressContainer.appendChild(tick);
+    });
+  }
+};
+
+/* ============== SECTION: Act Content ============== */
+
+let starfield, mars, marsAtmosphere, spacecraft, cockpitFrame, engineGlow;
+let plasmaField, plasmaMaterial, plasmaSeeds, plasmaCountAlive = 0;
+let hazeBackdrop, chuteAssembly, chuteCanopy, chuteLines, chuteMortar;
+let plasmaSheath;
+
+function initActContent() {
+  createStarfield();
+  createMars();
+  createSpacecraft();
+  createCockpitFrame();
+  createAct2Assets();
+  
+  const ambientLight = new THREE.AmbientLight(0x202040, 0.05);
+  scene.add(ambientLight);
+  
+  const sunLight = new THREE.DirectionalLight(0xFFEEDD, 3.5);
+  sunLight.position.set(50, 15, -25);
+  scene.add(sunLight);
+  
+  const sunGlowGeometry = new THREE.SphereGeometry(5, 16, 16);
+  const sunGlowMaterial = new THREE.MeshBasicMaterial({
+    color: 0xFFDD88,
+    transparent: true,
+    opacity: 0.3
+  });
+  window.sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+  window.sunGlow.position.copy(sunLight.position);
+  scene.add(window.sunGlow);
+}
+
+function createStarfield() {
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(CONFIG.ACT1.STARFIELD.COUNT * 3);
+  const sizes = new Float32Array(CONFIG.ACT1.STARFIELD.COUNT);
+  const phases = new Float32Array(CONFIG.ACT1.STARFIELD.COUNT);
+  
+  function seededRandom(seed) {
+    let s = seed;
+    return function() {
+      s = (s * 9301 + 49297) % 233280;
+      return s / 233280;
+    };
+  }
+  const rng = seededRandom(CONFIG.ACT1.STARFIELD.SEED);
+  
+  for (let i = 0; i < CONFIG.ACT1.STARFIELD.COUNT; i++) {
+    const theta = rng() * Math.PI * 2;
+    const phi = Math.acos(2 * rng() - 1);
+    const r = CONFIG.ACT1.STARFIELD.SPREAD;
+    
+    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[i * 3 + 2] = r * Math.cos(phi);
+    
+    sizes[i] = CONFIG.ACT1.STARFIELD.SIZE_MIN + 
+               rng() * (CONFIG.ACT1.STARFIELD.SIZE_MAX - CONFIG.ACT1.STARFIELD.SIZE_MIN);
+    phases[i] = rng() * Math.PI * 2;
+  }
+  
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+  geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1));
+  
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uFade: { value: 1.0 }
+    },
+    vertexShader: `
+      attribute float size;
+      attribute float phase;
+      uniform float uTime;
+      uniform float uFade;
+      varying float vAlpha;
+      
+      void main() {
+        vAlpha = (0.5 + 0.5 * sin(uTime * 0.3 + phase)) * uFade;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = size * (300.0 / -mvPosition.z);
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying float vAlpha;
+      
+      void main() {
+        vec2 center = gl_PointCoord - 0.5;
+        float dist = length(center);
+        if (dist > 0.5) discard;
+        float alpha = (1.0 - dist * 2.0) * vAlpha * 0.8;
+        gl_FragColor = vec4(1.0, 1.0, 1.0, alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  
+  starfield = new THREE.Points(geometry, material);
+  scene.add(starfield);
+}
+
+function createMars() {
+  const geometry = new THREE.SphereGeometry(CONFIG.ACT1.MARS.RADIUS, 64, 64);
+  
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uColorBase: { value: new THREE.Color(CONFIG.ACT1.MARS.COLOR_BASE) },
+      uColorDark: { value: new THREE.Color(CONFIG.ACT1.MARS.COLOR_DARK) },
+      uColorPolar: { value: new THREE.Color(CONFIG.ACT1.MARS.COLOR_POLAR) }
+    },
+    vertexShader: `
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+      
+      void main() {
+        vPosition = position;
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColorBase;
+      uniform vec3 uColorDark;
+      uniform vec3 uColorPolar;
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+      
+      float hash(vec3 p) {
+        p = fract(p * 0.3183099 + 0.1);
+        p *= 17.0;
+        return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+      }
+      
+      float noise(vec3 x) {
+        vec3 i = floor(x);
+        vec3 f = fract(x);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                       mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                       mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+      }
+      
+      float fbm(vec3 p) {
+        float value = 0.0;
+        float amplitude = 0.5;
+        for (int i = 0; i < 4; i++) {
+          value += amplitude * noise(p);
+          p *= 2.0;
+          amplitude *= 0.5;
+        }
+        return value;
+      }
+      
+      void main() {
+        vec3 p = vPosition * 0.5;
+        float n = fbm(p);
+        
+        float polar = abs(vPosition.y / 10.0);
+        float polarBlend = smoothstep(0.7, 1.0, polar);
+        
+        vec3 color = mix(uColorBase, uColorDark, n);
+        color = mix(color, uColorPolar, polarBlend * 0.4);
+        
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `
+  });
+  
+  mars = new THREE.Mesh(geometry, material);
+  mars.position.set(0, 0, -CONFIG.ACT1.MARS.INITIAL_DISTANCE);
+  scene.add(mars);
+  
+  const atmosphereGeometry = new THREE.SphereGeometry(CONFIG.ACT1.MARS.RADIUS * 1.05, 64, 64);
+  const atmosphereMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uAtmosphereColor: { value: new THREE.Color(CONFIG.ACT1.MARS.ATMOSPHERE_COLOR) },
+      uIntensity: { value: CONFIG.ACT1.MARS.ATMOSPHERE_INTENSITY }
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vViewPosition = -mvPosition.xyz;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uAtmosphereColor;
+      uniform float uIntensity;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      
+      void main() {
+        vec3 viewDir = normalize(vViewPosition);
+        float fresnel = 1.0 - abs(dot(viewDir, vNormal));
+        fresnel = pow(fresnel, 3.0);
+        
+        float alpha = fresnel * uIntensity * 0.6;
+        gl_FragColor = vec4(uAtmosphereColor, alpha);
+      }
+    `,
+    transparent: true,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  
+  marsAtmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+  mars.add(marsAtmosphere);
+}
+
+function createSpacecraft() {
+  spacecraft = new THREE.Group();
+  spacecraft.name = 'spacecraft';
+  
+  const hullGeometry = new THREE.CapsuleGeometry(
+    CONFIG.ACT1.SPACECRAFT.HULL_RADIUS,
+    CONFIG.ACT1.SPACECRAFT.HULL_HEIGHT,
+    8, 16
+  );
+  const hullMaterial = new THREE.MeshStandardMaterial({
+    color: 0x2A2A2A,
+    roughness: 0.8,
+    metalness: 0.3
+  });
+  const hull = new THREE.Mesh(hullGeometry, hullMaterial);
+  hull.name = 'hull';
+  hull.scale.set(0.9, 1, 0.9);
+  spacecraft.add(hull);
+  
+  const serviceGeometry = new THREE.CylinderGeometry(
+    CONFIG.ACT1.SPACECRAFT.SERVICE_SIZE,
+    CONFIG.ACT1.SPACECRAFT.SERVICE_SIZE,
+    CONFIG.ACT1.SPACECRAFT.SERVICE_SIZE * 0.8,
+    8
+  );
+  const serviceModule = new THREE.Mesh(serviceGeometry, hullMaterial);
+  serviceModule.name = 'serviceModule';
+  serviceModule.position.y = -CONFIG.ACT1.SPACECRAFT.HULL_HEIGHT * 0.7;
+  spacecraft.add(serviceModule);
+  
+  const mastGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 6);
+  const mastMaterial = new THREE.MeshStandardMaterial({
+    color: 0x1A1A1A,
+    roughness: 0.6,
+    metalness: 0.5
+  });
+  const mast = new THREE.Mesh(mastGeometry, mastMaterial);
+  mast.name = 'antennaMast';
+  mast.position.set(0, CONFIG.ACT1.SPACECRAFT.HULL_HEIGHT * 0.5 + 0.4, 0);
+  spacecraft.add(mast);
+  
+  const antennaGeometry = new THREE.ConeGeometry(
+    CONFIG.ACT1.SPACECRAFT.ANTENNA_SIZE * 0.4,
+    CONFIG.ACT1.SPACECRAFT.ANTENNA_SIZE * 0.6,
+    6
+  );
+  const antenna = new THREE.Mesh(antennaGeometry, mastMaterial);
+  antenna.name = 'antenna';
+  antenna.position.set(0, CONFIG.ACT1.SPACECRAFT.HULL_HEIGHT * 0.5 + 0.8, 0);
+  spacecraft.add(antenna);
+  
+  const radiatorGeometry = new THREE.BoxGeometry(0.15, 0.6, 0.02);
+  const radiatorMaterial = new THREE.MeshStandardMaterial({
+    color: 0x3A3A3A,
+    roughness: 0.7,
+    metalness: 0.4
+  });
+  
+  const radiatorLeft = new THREE.Mesh(radiatorGeometry, radiatorMaterial);
+  radiatorLeft.name = 'radiatorLeft';
+  radiatorLeft.position.set(-CONFIG.ACT1.SPACECRAFT.HULL_RADIUS * 1.1, 0.2, 0.4);
+  radiatorLeft.rotation.y = Math.PI * 0.15;
+  spacecraft.add(radiatorLeft);
+  
+  const radiatorRight = new THREE.Mesh(radiatorGeometry, radiatorMaterial);
+  radiatorRight.name = 'radiatorRight';
+  radiatorRight.position.set(CONFIG.ACT1.SPACECRAFT.HULL_RADIUS * 1.1, -0.1, 0.4);
+  radiatorRight.rotation.y = -Math.PI * 0.15;
+  spacecraft.add(radiatorRight);
+  
+  const heatshieldGeometry = new THREE.CylinderGeometry(
+    CONFIG.ACT1.SPACECRAFT.HULL_RADIUS * 1.3,
+    CONFIG.ACT1.SPACECRAFT.HULL_RADIUS * 1.5,
+    0.2,
+    16
+  );
+  const heatshieldMaterial = new THREE.MeshStandardMaterial({
+    color: 0x1A1A1A,
+    roughness: 0.9,
+    metalness: 0.1
+  });
+  const heatshield = new THREE.Mesh(heatshieldGeometry, heatshieldMaterial);
+  heatshield.name = 'heatshield';
+  heatshield.position.y = CONFIG.ACT1.SPACECRAFT.HULL_HEIGHT * 0.7;
+  spacecraft.add(heatshield);
+  
+  const glowGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: CONFIG.ACT1.SPACECRAFT.ENGINE_GLOW_COLOR,
+    transparent: true,
+    opacity: CONFIG.ACT1.SPACECRAFT.ENGINE_GLOW_INTENSITY
+  });
+  engineGlow = new THREE.Mesh(glowGeometry, glowMaterial);
+  engineGlow.position.y = -CONFIG.ACT1.SPACECRAFT.HULL_HEIGHT * 0.9;
+  spacecraft.add(engineGlow);
+  
+  const legs = new THREE.Group();
+  legs.name = 'legs';
+  legs.visible = false;
+  spacecraft.add(legs);
+  
+  scene.add(spacecraft);
+}
+
+function createCockpitFrame() {
+  cockpitFrame = new THREE.Group();
+  cockpitFrame.name = 'cockpitFrame';
+  
+  const frameThickness = 0.15;
+  const frameWidth = 8;
+  const frameHeight = 3.2;
+  
+  const frameMaterial = new THREE.MeshBasicMaterial({
+    color: 0x101014,
+    side: THREE.DoubleSide
+  });
+  
+  const topBar = new THREE.Mesh(
+    new THREE.BoxGeometry(frameWidth, frameThickness, frameThickness),
+    frameMaterial
+  );
+  topBar.position.y = frameHeight / 2;
+  topBar.name = 'topBar';
+  cockpitFrame.add(topBar);
+  
+  const bottomBar = new THREE.Mesh(
+    new THREE.BoxGeometry(frameWidth, frameThickness, frameThickness),
+    frameMaterial
+  );
+  bottomBar.position.y = -frameHeight / 2;
+  bottomBar.name = 'bottomBar';
+  cockpitFrame.add(bottomBar);
+  
+  const leftBar = new THREE.Mesh(
+    new THREE.BoxGeometry(frameThickness, frameHeight, frameThickness),
+    frameMaterial
+  );
+  leftBar.position.x = -frameWidth / 2;
+  leftBar.name = 'leftBar';
+  cockpitFrame.add(leftBar);
+  
+  const rightBar = new THREE.Mesh(
+    new THREE.BoxGeometry(frameThickness, frameHeight, frameThickness),
+    frameMaterial
+  );
+  rightBar.position.x = frameWidth / 2;
+  rightBar.name = 'rightBar';
+  cockpitFrame.add(rightBar);
+  
+  const rimGlowMaterial = new THREE.MeshBasicMaterial({
+    color: 0xE9A568,
+    transparent: true,
+    opacity: 0,
+    side: THREE.BackSide,
+    depthTest: false,
+    blending: THREE.AdditiveBlending
+  });
+  
+  const topRim = new THREE.Mesh(
+    new THREE.BoxGeometry(frameWidth * 1.02, frameThickness * 0.10, frameThickness * 0.05),
+    rimGlowMaterial
+  );
+  topRim.position.y = frameHeight / 2;
+  topRim.position.z = -0.01;
+  topRim.name = 'topRim';
+  cockpitFrame.add(topRim);
+  
+  const bottomRim = new THREE.Mesh(
+    new THREE.BoxGeometry(frameWidth * 1.02, frameThickness * 0.10, frameThickness * 0.05),
+    rimGlowMaterial.clone()
+  );
+  bottomRim.position.y = -frameHeight / 2;
+  bottomRim.position.z = -0.01;
+  bottomRim.name = 'bottomRim';
+  cockpitFrame.add(bottomRim);
+  
+  const leftRim = new THREE.Mesh(
+    new THREE.BoxGeometry(frameThickness * 0.10, frameHeight * 1.02, frameThickness * 0.05),
+    rimGlowMaterial.clone()
+  );
+  leftRim.position.x = -frameWidth / 2;
+  leftRim.position.z = -0.01;
+  leftRim.name = 'leftRim';
+  cockpitFrame.add(leftRim);
+  
+  const rightRim = new THREE.Mesh(
+    new THREE.BoxGeometry(frameThickness * 0.10, frameHeight * 1.02, frameThickness * 0.05),
+    rimGlowMaterial.clone()
+  );
+  rightRim.position.x = frameWidth / 2;
+  rightRim.position.z = -0.01;
+  rightRim.name = 'rightRim';
+  cockpitFrame.add(rightRim);
+  
+  scene.add(cockpitFrame);
+}
+
+function createAct2Assets() {
+  const plasmaPositions = new Float32Array(CONFIG.ACT2.PLASMA.COUNT * 3);
+  plasmaSeeds = new Float32Array(CONFIG.ACT2.PLASMA.COUNT);
+  for (let i = 0; i < CONFIG.ACT2.PLASMA.COUNT; i++) {
+    const seed = (i * 17 + CONFIG.ACT2.PLASMA.SEED) % 997;
+    plasmaSeeds[i] = seed / 997;
+    plasmaPositions[i * 3] = (plasmaSeeds[i] - 0.5) * 2.8;
+    plasmaPositions[i * 3 + 1] = -0.9 + plasmaSeeds[i] * 1.8;
+    plasmaPositions[i * 3 + 2] = -1.2 - plasmaSeeds[i] * 2.8;
+  }
+  const plasmaGeometry = new THREE.BufferGeometry();
+  plasmaGeometry.setAttribute('position', new THREE.BufferAttribute(plasmaPositions, 3));
+  plasmaMaterial = new THREE.PointsMaterial({ color: CONFIG.ACT2.PLASMA.OUTER_COLOR, size: 0.12, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  plasmaField = new THREE.Points(plasmaGeometry, plasmaMaterial);
+  plasmaField.visible = false;
+  scene.add(plasmaField);
+  
+  const sheathGeometry = new THREE.SphereGeometry(1.0, 24, 12);
+  const sheathMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      uCore: { value: new THREE.Color(CONFIG.ACT2.PLASMA.CORE_COLOR) },
+      uMid: { value: new THREE.Color(CONFIG.ACT2.PLASMA.MID_COLOR) },
+      uOuter: { value: new THREE.Color(CONFIG.ACT2.PLASMA.OUTER_COLOR) },
+      uOpacity: { value: 0 }
+    },
+    vertexShader: `
+      varying vec3 vPosition;
+      void main() {
+        vPosition = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uCore;
+      uniform vec3 uMid;
+      uniform vec3 uOuter;
+      uniform float uOpacity;
+      varying vec3 vPosition;
+      void main() {
+        float r = length(vPosition);
+        vec3 c = mix(uCore, uMid, smoothstep(0.0, 0.5, r));
+        c = mix(c, uOuter, smoothstep(0.5, 1.0, r));
+        float alpha = uOpacity * (1.0 - smoothstep(0.7, 1.0, r));
+        gl_FragColor = vec4(c, alpha);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+  plasmaSheath = new THREE.Mesh(sheathGeometry, sheathMaterial);
+  plasmaSheath.scale.set(1.4, 0.7, 1.0);
+  plasmaSheath.visible = false;
+  scene.add(plasmaSheath);
+  
+  const hazeGeometry = new THREE.PlaneGeometry(50, 30);
+  const hazeMaterial = new THREE.ShaderMaterial({
+    uniforms: { 
+      uLow: { value: new THREE.Color(CONFIG.ACT2.HAZE.LOW_COLOR) }, 
+      uMid: { value: new THREE.Color(CONFIG.ACT2.HAZE.MID_COLOR) }, 
+      uHigh: { value: new THREE.Color(CONFIG.ACT2.HAZE.HIGH_COLOR) } 
+    },
+    vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: `
+      uniform vec3 uLow; 
+      uniform vec3 uMid; 
+      uniform vec3 uHigh; 
+      varying vec2 vUv; 
+      void main(){
+        float y = 1.0 - vUv.y;
+        vec3 c=mix(uLow,uMid,smoothstep(0.0,0.55,y)); 
+        c=mix(c,uHigh,smoothstep(0.45,1.0,y)); 
+        float bands=0.04*sin(y*48.0);
+        float edgeFade = smoothstep(0.0, 0.2, vUv.x) * smoothstep(1.0, 0.8, vUv.x);
+        gl_FragColor=vec4(c+bands, edgeFade);
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide
+  });
+  hazeBackdrop = new THREE.Mesh(hazeGeometry, hazeMaterial);
+  hazeBackdrop.position.set(0, 2, -18);
+  hazeBackdrop.visible = false;
+  scene.add(hazeBackdrop);
+  
+  chuteAssembly = new THREE.Group();
+  chuteCanopy = new THREE.Mesh(new THREE.SphereGeometry(CONFIG.ACT2.CHUTE.RADIUS, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), new THREE.MeshStandardMaterial({ color: CONFIG.ACT2.CHUTE.COLOR, roughness: 0.9, metalness: 0 }));
+  chuteCanopy.scale.set(1, 0.45, 1);
+  chuteCanopy.position.y = 2.7;
+  chuteAssembly.add(chuteCanopy);
+  const linePositions = new Float32Array([-2.0,2.6,0, -0.7,0,0, 2.0,2.6,0, 0.7,0,0, -1.4,2.9,0.4, -0.4,0,0, 1.4,2.9,0.4, 0.4,0,0]);
+  const lineGeometry = new THREE.BufferGeometry();
+  lineGeometry.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+  chuteLines = new THREE.LineSegments(lineGeometry, new THREE.LineBasicMaterial({ color: CONFIG.ACT2.CHUTE.DARK_COLOR, transparent: true, opacity: 0.85 }));
+  chuteAssembly.add(chuteLines);
+  chuteMortar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 0.7, 8), new THREE.MeshBasicMaterial({ color: CONFIG.ACT2.CHUTE.DARK_COLOR }));
+  chuteMortar.position.y = 0.5;
+  chuteAssembly.add(chuteMortar);
+  chuteAssembly.visible = false;
+  scene.add(chuteAssembly);
+}
+
+function act2Intensity(t) {
+  if (t < CONFIG.ACT2.SHOT4_START || t >= CONFIG.ACT2.SHOT4_END) return 0;
+  const ramp = Math.min(1, (t - CONFIG.ACT2.SHOT4_START) / (CONFIG.ACT2.PLASMA.RAMP_END - CONFIG.ACT2.SHOT4_START));
+  const flicker = t >= CONFIG.ACT2.PLASMA.RAMP_END ? 1 + 0.15 * Math.sin(t * 73.0 + CONFIG.ACT2.PLASMA.SEED) : 1;
+  return ramp * flicker;
+}
+
+function updateAct2Content(t) {
+  const intensity = act2Intensity(t);
+  const shot4 = t >= CONFIG.ACT2.SHOT4_START && t < CONFIG.ACT2.SHOT4_END;
+  plasmaField.visible = shot4;
+  plasmaSheath.visible = shot4;
+  plasmaMaterial.opacity = Math.max(0, intensity * 0.9);
+  plasmaSheath.material.uniforms.uOpacity.value = Math.max(0, intensity * 0.65);
+  plasmaCountAlive = shot4 ? Math.floor(CONFIG.ACT2.PLASMA.COUNT * Math.min(1, intensity)) : 0;
+  if (shot4) {
+    plasmaField.position.set(spacecraft.position.x, spacecraft.position.y - 0.2, spacecraft.position.z - 0.5);
+    plasmaSheath.position.set(spacecraft.position.x, spacecraft.position.y - 0.4, spacecraft.position.z - 1.2);
+    const stream = (t - CONFIG.ACT2.SHOT4_START) * 3.0;
+    plasmaField.position.z -= stream % 4.0;
+    spacecraft.rotation.set(Math.PI + 0.12, -0.35, 0.05);
+  }
+  const shot5 = t >= CONFIG.ACT2.SHOT5_START && t < CONFIG.ACT2.SHOT5_END;
+  hazeBackdrop.visible = shot5;
+  chuteAssembly.visible = shot5;
+  if (shot5) {
+    const local = t - CONFIG.ACT2.SHOT5_START;
+    const inflate = Math.min(1, Math.max(0, (local - 0.2) / 1.1));
+    const overshoot = inflate < 0.9 ? inflate * 1.06 : 1.0;
+    chuteAssembly.scale.setScalar(0.15 + 0.85 * overshoot);
+    const swingT = Math.max(0, t - CONFIG.ACT2.CHUTE.SWING_START);
+    const swing = swingT > 0 ? CONFIG.ACT2.CHUTE.SWING_DEGREES * Math.exp(-CONFIG.ACT2.CHUTE.SWING_DECAY * swingT) * Math.sin(CONFIG.ACT2.CHUTE.SWING_FREQUENCY * swingT) : 0;
+    chuteAssembly.rotation.z = THREE.MathUtils.degToRad(swing);
+    chuteAssembly.position.set(0, 1.4 - local * 0.25, -8);
+    chuteMortar.visible = local < 0.2;
+  }
+}
+
+function updateActContent(t) {
+  if (starfield && t < CONFIG.ACT1.SHOT1_END) {
+    starfield.material.uniforms.uTime.value = t * CONFIG.ACT1.STARFIELD.TWINKLE_SPEED;
+    starfield.material.uniforms.uFade.value = 1.0;
+    starfield.visible = true;
+  } else if (starfield && t >= CONFIG.ACT2.SHOT4_START && t < CONFIG.ACT2.SHOT5_END) {
+    starfield.material.uniforms.uTime.value = t * CONFIG.ACT1.STARFIELD.TWINKLE_SPEED;
+    starfield.material.uniforms.uFade.value = 0.12;
+    starfield.visible = true;
+  } else if (starfield) {
+    starfield.visible = false;
+  }
+  
+  if (window.sunGlow) {
+    window.sunGlow.visible = t >= CONFIG.ACT1.SHOT1_END && t < CONFIG.ACT2.SHOT4_START;
+  }
+  
+  if (mars) {
+    if (t < CONFIG.ACT1.SHOT1_END) {
+      mars.visible = true;
+      const scale = 0.035;
+      mars.scale.setScalar(scale);
+      mars.position.set(2, 1, -CONFIG.ACT1.MARS.INITIAL_DISTANCE);
+    } else if (t < CONFIG.ACT1.SHOT2_END) {
+      mars.visible = true;
+      const shotT = (t - CONFIG.ACT1.SHOT1_END) / (CONFIG.ACT1.SHOT2_END - CONFIG.ACT1.SHOT1_END);
+      const scale = 0.35 + shotT * 0.15;
+      mars.scale.setScalar(scale);
+      mars.position.set(0, -2, -15 - shotT * 5);
+    } else if (t < CONFIG.ACT1.SHOT3_END) {
+      mars.visible = true;
+      const shotT = (t - CONFIG.ACT1.SHOT2_END) / (CONFIG.ACT1.SHOT3_END - CONFIG.ACT1.SHOT2_END);
+      const scale = 1.5 + shotT * 0.3;
+      mars.scale.setScalar(scale);
+      mars.position.set(0, -10 - shotT * 5, -30 - shotT * 10);
+      mars.rotation.y = t * 0.02;
+    } else {
+      mars.visible = false;
+    }
+  }
+  
+  if (spacecraft) {
+    if (t >= CONFIG.ACT1.SHOT1_END && t < CONFIG.ACT1.SHOT2_END) {
+      spacecraft.visible = true;
+      const shotT = (t - CONFIG.ACT1.SHOT1_END) / (CONFIG.ACT1.SHOT2_END - CONFIG.ACT1.SHOT1_END);
+      spacecraft.position.set(-1.5 + shotT * 0.3, 0.5 - shotT * 0.2, 2 - shotT * 1);
+      spacecraft.rotation.set(0.3, -0.5 + shotT * 0.1, 0.1);
+      spacecraft.scale.setScalar(2.5);
+      if (engineGlow) {
+        engineGlow.visible = true;
+        engineGlow.material.opacity = CONFIG.ACT1.SPACECRAFT.ENGINE_GLOW_INTENSITY * (0.7 + Math.sin(t * 3) * 0.3);
+      }
+    } else if (t >= CONFIG.ACT2.SHOT4_START && t < CONFIG.ACT2.SHOT4_END) {
+      spacecraft.visible = true;
+      const local = (t - CONFIG.ACT2.SHOT4_START) / (CONFIG.ACT2.SHOT4_END - CONFIG.ACT2.SHOT4_START);
+      spacecraft.position.set(0, -0.8 - local * 0.8, -5 - local * 3);
+      spacecraft.rotation.set(Math.PI + 0.12, -0.35, 0.05);
+      spacecraft.scale.setScalar(2.0);
+      if (engineGlow) engineGlow.visible = false;
+    } else if (t >= CONFIG.ACT2.SHOT5_START && t < CONFIG.ACT2.SHOT5_END) {
+      spacecraft.visible = true;
+      spacecraft.position.set(0, 0.4 - (t - CONFIG.ACT2.SHOT5_START) * 0.25, -8);
+      spacecraft.rotation.set(0, 0, 0);
+      spacecraft.scale.setScalar(1.2);
+      if (engineGlow) engineGlow.visible = false;
+    } else {
+      spacecraft.visible = false;
+    }
+  }
+  
+  if (cockpitFrame) {
+    if (t >= CONFIG.ACT1.SHOT2_END && t < CONFIG.ACT1.SHOT3_END) {
+      cockpitFrame.visible = true;
+      const camState = cameraStateAt(t);
+      const camPos = new THREE.Vector3(...camState.pos);
+      const camLook = new THREE.Vector3(...camState.look);
+      const lookDir = new THREE.Vector3().subVectors(camLook, camPos).normalize();
+      
+      const frameDistance = 3.5;
+      const framePos = new THREE.Vector3().addVectors(camPos, lookDir.multiplyScalar(frameDistance));
+      cockpitFrame.position.copy(framePos);
+      cockpitFrame.lookAt(camLook);
+      
+      const shotT = (t - CONFIG.ACT1.SHOT2_END) / (CONFIG.ACT1.SHOT3_END - CONFIG.ACT1.SHOT2_END);
+      const rimIntensity = 0.30 + shotT * 0.08;
+      
+      for (let i = 4; i < 8; i++) {
+        cockpitFrame.children[i].material.opacity = rimIntensity;
+      }
+    } else {
+      cockpitFrame.visible = false;
+    }
+  }
+  
+  if (renderer && !window._drawCallLogged && Math.abs(t - 10) < 0.016) {
+    console.log('Renderer info at t=10s:', renderer.info.render);
+    window._drawCallLogged = true;
+  }
+}
+
+const SelfTest = {
+  enabled: new URLSearchParams(window.location.search).get('selftest') === '1',
+  targets: [9.0, 12.0, 15.5, 18.0, 21.5, 25.0],
+  index: 0,
+  pendingSample: false,
+  complete: false,
+  
+  init() {
+    if (!this.enabled) return;
+    UI.introOverlay.classList.add('hidden');
+    UI.isPlaying = true;
+    PlaybackEngine.seek(0);
+    PlaybackEngine.play();
+  },
+  
+  beforeRender() {
+    if (!this.enabled || this.complete || this.pendingSample || this.index >= this.targets.length) return;
+    const target = this.targets[this.index];
+    if (PlaybackEngine.currentT >= target) {
+      PlaybackEngine.seek(target);
+      PlaybackEngine.pause();
+      this.pendingSample = true;
+    }
+  },
+  
+  afterRender() {
+    if (!this.enabled || !this.pendingSample) return;
+    const sampleTime = this.targets[this.index];
+    const ndc = {};
+    const labels = ['top', 'bottom', 'left', 'right'];
+    [4, 5, 6, 7].forEach((childIndex, i) => {
+      const point = cockpitFrame.children[childIndex].getWorldPosition(new THREE.Vector3());
+      point.project(camera);
+      ndc[labels[i]] = i < 2 ? Number(point.y.toFixed(3)) : Number(point.x.toFixed(3));
+    });
+    let payload;
+    if (sampleTime <= 15.5) {
+      payload = { t: sampleTime, ndc, drawCalls: renderer.info.render.calls };
+    } else if (sampleTime === 18) {
+      payload = { t: sampleTime, plasmaCount: plasmaCountAlive, shakeAmp: Number((CONFIG.ACT2.SHAKE.POSITION_AMPLITUDE * Math.min(1, (sampleTime - CONFIG.ACT2.SHOT4_START) / (CONFIG.ACT2.SHAKE.MAX_TIME - CONFIG.ACT2.SHOT4_START))).toFixed(3)), drawCalls: renderer.info.render.calls };
+    } else if (sampleTime === 21.5) {
+      payload = { t: sampleTime, blackout: true, drawCalls: renderer.info.render.calls };
+    } else {
+      const local = sampleTime - CONFIG.ACT2.SHOT5_START;
+      const chuteScale = Math.min(1.06, 0.15 + 0.85 * Math.min(1, Math.max(0, (local - 0.2) / 1.1)));
+      const swingT = Math.max(0, sampleTime - CONFIG.ACT2.CHUTE.SWING_START);
+      const swingDeg = swingT > 0 ? CONFIG.ACT2.CHUTE.SWING_DEGREES * Math.exp(-CONFIG.ACT2.CHUTE.SWING_DECAY * swingT) * Math.sin(CONFIG.ACT2.CHUTE.SWING_FREQUENCY * swingT) : 0;
+      const highColor = new THREE.Color(CONFIG.ACT2.HAZE.HIGH_COLOR);
+      const hazeTopLuma = Number((0.299 * highColor.r + 0.587 * highColor.g + 0.114 * highColor.b).toFixed(3));
+      payload = { t: sampleTime, chuteScale: Number(chuteScale.toFixed(3)), swingDeg: Number(swingDeg.toFixed(3)), hazeTopLuma, drawCalls: renderer.info.render.calls };
+    }
+    console.log(`SELFTEST ${JSON.stringify(payload)}`);
+    this.index += 1;
+    this.pendingSample = false;
+    if (this.index >= this.targets.length) {
+      this.complete = true;
+      console.log('SELFTEST-DONE');
+    } else {
+      UI.isPlaying = true;
+      PlaybackEngine.play();
+    }
+  }
+};
+
+/* ============== SECTION: Main Loop ============== */
+
+const PlaybackEngine = {
+  clock: null,
+  isPlaying: false,
+  currentT: 0,
+  prevT: 0,
+  
+  init() {
+    this.clock = new THREE.Clock(false);
+  },
+  
+  play() {
+    if (this.currentT >= CONFIG.DURATION) {
+      this.seek(0);
+    }
+    this.isPlaying = true;
+    this.clock.start();
+    this.prevT = this.currentT;
+  },
+  
+  pause() {
+    this.isPlaying = false;
+    this.clock.stop();
+  },
+  
+  seek(t) {
+    this.currentT = Math.max(0, Math.min(CONFIG.DURATION, t));
+    this.prevT = this.currentT;
+    this.clock.stop();
+    if (this.isPlaying) {
+      this.clock.start();
+    }
+    AudioEngine.resetCues();
+    applyState(this.currentT);
+  },
+  
+  tick() {
+    if (this.isPlaying) {
+      const delta = this.clock.getDelta();
+      this.prevT = this.currentT;
+      this.currentT = Math.min(this.currentT + delta, CONFIG.DURATION);
+      
+      AudioEngine.tick(this.prevT, this.currentT);
+      
+      if (this.currentT >= CONFIG.DURATION) {
+        this.isPlaying = false;
+        this.clock.stop();
+        UI.isPlaying = false;
+        UI.updatePlayButton();
+        UI.showReplay();
+      }
+    }
+    
+    applyState(this.currentT);
+  }
+};
+
+function applyState(t) {
+  const camState = cameraStateAt(t);
+  camera.position.set(...camState.pos);
+  camera.lookAt(...camState.look);
+  camera.fov = camState.fov;
+  camera.updateProjectionMatrix();
+  
+  updateActContent(t);
+  updateAct2Content(t);
+  
+  const shakeT = t >= CONFIG.ACT2.SHOT4_START && t < CONFIG.ACT2.SHOT4_END ? Math.min(1, (t - CONFIG.ACT2.SHOT4_START) / (CONFIG.ACT2.SHAKE.MAX_TIME - CONFIG.ACT2.SHOT4_START)) : 0;
+  const shakeEnvelope = shakeT * shakeT * (3 - 2 * shakeT);
+  const shakeWave = Math.sin(t * CONFIG.ACT2.SHAKE.FREQ_A * Math.PI * 2 + CONFIG.ACT2.SHAKE.PHASE_A) * 0.5 + Math.sin(t * CONFIG.ACT2.SHAKE.FREQ_B * Math.PI * 2 + CONFIG.ACT2.SHAKE.PHASE_B) * 0.3 + Math.sin(t * CONFIG.ACT2.SHAKE.FREQ_C * Math.PI * 2 + CONFIG.ACT2.SHAKE.PHASE_C) * 0.2;
+  if (shakeEnvelope > 0) {
+    camera.position.x += shakeWave * CONFIG.ACT2.SHAKE.POSITION_AMPLITUDE * shakeEnvelope;
+    camera.position.y += Math.sin(t * 4.1) * CONFIG.ACT2.SHAKE.POSITION_AMPLITUDE * 0.5 * shakeEnvelope;
+    camera.rotation.z += THREE.MathUtils.degToRad(CONFIG.ACT2.SHAKE.ROTATION_AMPLITUDE) * shakeWave * shakeEnvelope;
+  }
+  
+  const blackout = t >= CONFIG.UI.BLACKOUT_START && t < CONFIG.UI.BLACKOUT_END;
+  if (blackout) {
+    const fadeIn = Math.min(1, Math.max(0, (t - CONFIG.UI.BLACKOUT_FADE_IN_START) / (CONFIG.UI.BLACKOUT_FADE_IN_END - CONFIG.UI.BLACKOUT_FADE_IN_START)));
+    const fadeOut = t >= CONFIG.UI.BLACKOUT_FADE_OUT_START ? 1 - Math.min(1, (t - CONFIG.UI.BLACKOUT_FADE_OUT_START) / (CONFIG.UI.BLACKOUT_FADE_OUT_END - CONFIG.UI.BLACKOUT_FADE_OUT_START)) : 1;
+    UI.blackoutOverlay.style.opacity = String(fadeIn * fadeOut);
+    UI.blackoutOverlay.style.pointerEvents = 'all';
+  } else {
+    UI.blackoutOverlay.style.opacity = '0';
+    UI.blackoutOverlay.style.pointerEvents = 'none';
+  }
+  
+  const exposure = t >= CONFIG.ACT2.SHOT5_START && t < CONFIG.ACT2.SHOT5_START + 0.45 ? Easing.easeOutQuad((t - CONFIG.ACT2.SHOT5_START) / 0.45) : (t >= CONFIG.ACT2.SHOT5_START ? 1 : 1);
+  renderer.toneMappingExposure = blackout ? 0 : exposure;
+
+  const postUniforms = getPostUniforms();
+  postUniforms.uTime.value = t * 5.0;
+  const staticSpike = t >= CONFIG.ACT2.SHOT5_START && t < CONFIG.ACT2.SHOT5_START + 0.15 ? 3 : (blackout ? 0 : 1);
+  postUniforms.uGrainStrength.value = CONFIG.POST.GRAIN_STRENGTH * staticSpike;
+  
+  UI.updateProgress(t);
+  UI.updateHUD(t);
+  UI.updateTitles(t);
+  UI.updateBlackout(t);
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  PlaybackEngine.tick();
+  SelfTest.beforeRender();
+  composer.render();
+  SelfTest.afterRender();
+}
+
+function init() {
+  initRenderPipeline();
+  initActContent();
+  PlaybackEngine.init();
+  UI.init();
+  
+  applyState(0);
+  SelfTest.init();
+  animate();
+}
+
+init();
+
+</script>
+
+</body>
+</html>
